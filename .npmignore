@@ -1,0 +1,9 @@
+tsconfig.json
+src
+.gitignore
+example.ts
+tslint.json
+coverage
+.travis.yml
+.idea/
+examples/

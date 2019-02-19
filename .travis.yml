@@ -1,0 +1,30 @@
+language: node_js
+
+sudo: required
+
+node_js:
+- v10.8.0
+
+cache:
+    directories:
+    - node_modules
+
+notifications:
+    email:
+        recipients:
+        - guilherme.moraes@outlook.com
+        on_success: never
+        on_failure: always
+
+services:
+- rabbitmq
+
+before_install:
+- rabbitmq-plugins enable rabbitmq_mqtt
+
+script:
+- npm install
+- npm run lint
+- npm run build
+- npm link
+- nqr -a examples/mqtt.yml -l /home/travis/build/lopidio/enqueuer-plugin-mqtt
