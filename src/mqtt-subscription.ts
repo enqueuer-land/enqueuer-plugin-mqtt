@@ -1,10 +1,12 @@
-import * as mqtt from 'mqtt';
-import {Logger, MainInstance, Subscription, SubscriptionModel, SubscriptionProtocol} from 'enqueuer-plugins-template';
+import * as mqtt from 'async-mqtt';
+import {Logger, MainInstance, Subscription, InputSubscriptionModel as SubscriptionModel, SubscriptionProtocol} from 'enqueuer';
+import {AsyncMqttClient} from 'async-mqtt';
 
 export class MqttSubscription extends Subscription {
 
-    private client: any;
+    private client?: AsyncMqttClient;
     private messageReceivedResolver?: (value?: (PromiseLike<any> | any)) => void;
+    private readonly options: any;
 
     constructor(subscriptionAttributes: SubscriptionModel) {
         super(subscriptionAttributes);
@@ -12,9 +14,9 @@ export class MqttSubscription extends Subscription {
         this.options.connectTimeout = this.options.connectTimeout || 10 * 1000;
     }
 
-    public receiveMessage(): Promise<any> {
+    public receiveMessage(): Promise<void> {
         return new Promise((resolve, reject) => {
-            if (!this.client.connected) {
+            if (!this.client!.connected) {
                 reject(`Error trying to receive message. Subscription is not connected yet: ${this.topic}`);
             } else {
                 Logger.debug('Mqtt message receiver resolver initialized');
@@ -24,16 +26,16 @@ export class MqttSubscription extends Subscription {
     }
 
     public subscribe(): Promise<void> {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             Logger.trace(`Mqtt connecting to broker ${this.brokerAddress}`);
             this.client = mqtt.connect(this.brokerAddress, this.options);
             Logger.trace(`Mqtt client created`);
             if (!this.client.connected) {
-                this.client.on('connect', () =>  {
-                    this.subscribeToTopic(reject, resolve);
+                this.client.on('connect', async () => {
+                    await this.subscribeToTopic(reject, resolve);
                 });
             } else {
-                this.subscribeToTopic(reject, resolve);
+                await this.subscribeToTopic(reject, resolve);
             }
             this.client.on('error', (error: any) => {
                 Logger.error(`Error subscribing to mqtt ${error}`);
@@ -44,29 +46,32 @@ export class MqttSubscription extends Subscription {
 
     public async unsubscribe(): Promise<void> {
         if (this.client) {
-            this.client.unsubscribe(this.topic);
-            this.client.end(true);
+            await this.client.unsubscribe(this.topic);
+            await this.client.end(true);
         }
         delete this.client;
     }
 
-    private subscribeToTopic(reject: Function, resolve: Function) {
+    private async subscribeToTopic(reject: Function, resolve: Function) {
+        this.executeHookEvent('onConnected');
         Logger.trace(`Mqtt subscribing on topic ${this.topic}`);
-        this.client.subscribe(this.topic, (err: any) => {
-            if (err) {
-                reject(err);
-            } else {
-                Logger.trace(`Mqtt subscribed on topic ${this.topic}`);
-                this.client.on('message', (topic: string, payload: string) => this.gotMessage(topic, payload));
-                resolve();
-            }
-        });
+        try {
+            await this.client!.subscribe(this.topic);
+            this.executeHookEvent('onSubscribed');
+            Logger.trace(`Mqtt subscribed on topic ${this.topic}`);
+            this.client!.on('message', (topic: string, payload: string) => this.gotMessage(topic, payload));
+            resolve();
+        } catch (err) {
+            reject(err);
+
+        }
     }
 
     private gotMessage(topic: string, payload: string) {
         Logger.debug('Mqtt got message');
         if (this.messageReceivedResolver) {
-            this.messageReceivedResolver({topic: topic, payload: payload});
+            this.executeHookEvent('onMessageReceived', {topic: topic, payload: payload});
+            this.messageReceivedResolver();
         } else {
             Logger.error('Mqtt message receiver resolver is not initialized');
         }
@@ -76,7 +81,41 @@ export class MqttSubscription extends Subscription {
 export function entryPoint(mainInstance: MainInstance): void {
     const mqtt = new SubscriptionProtocol('mqtt',
         (subscriptionModel: SubscriptionModel) => new MqttSubscription(subscriptionModel),
-        ['topic', 'payload'])
-        .setLibrary('mqtt');
+        {
+            description: 'Enqueuer plugin to handle mqtt messages',
+            homepage: 'https://github.com/enqueuer-land/enqueuer-plugin-mqtt',
+            libraryHomepage: 'https://github.com/mqttjs/async-mqtt',
+            schema: {
+                attributes: {
+                    options: {
+                        type: 'object',
+                        required: true,
+                        description: 'https://www.npmjs.com/package/mqtt#client'
+                    },
+                    brokerAddress: {
+                        type: 'string',
+                        required: true,
+                    },
+                    topic: {
+                        type: 'string',
+                        required: true,
+                    },
+                },
+                hooks: {
+                    onMessageReceived: {
+                        arguments: {
+                            topic: {},
+                            payload: {}
+                        },
+                    },
+                    onSubscribed: {
+                        arguments: {},
+                    },
+                    onConnected: {
+                        arguments: {},
+                    },
+                }
+            }
+        }).setLibrary('async-mqtt');
     mainInstance.protocolManager.addProtocol(mqtt);
 }

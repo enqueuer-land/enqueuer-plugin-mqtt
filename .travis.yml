@@ -25,4 +25,4 @@ script:
 - npm run lint
 - npm run build
 - npm link
-- nqr -a examples/mqtt.yml -l `pwd`
+- nqr examples/mqtt.yml -l `pwd`
