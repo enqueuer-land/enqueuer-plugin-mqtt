@@ -23,7 +23,7 @@ services:
 - rabbitmq
 
 before_install:
-- rabbitmq-plugins enable rabbitmq_mqtt
+- sudo rabbitmq-plugins enable rabbitmq_mqtt
 
 script:
 - npm install
