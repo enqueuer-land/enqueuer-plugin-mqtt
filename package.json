@@ -35,6 +35,6 @@
   },
   "dependencies": {
     "async-mqtt": "^2.3.0",
-    "enqueuer": "^5.0.0"
+    "enqueuer": "^6.0.0"
   }
 }
